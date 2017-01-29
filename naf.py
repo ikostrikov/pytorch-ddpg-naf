@@ -96,9 +96,7 @@ class NAF:
         if exploration is not None:
             mu += torch.Tensor(exploration.noise())
 
-        mu.clamp(-1, 1)
-
-        return mu
+        return mu.clamp(-1, 1)
 
     def update_parameters(self, batch):
         state_batch = Variable(torch.cat(batch.state))
