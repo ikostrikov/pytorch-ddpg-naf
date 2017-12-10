@@ -6,12 +6,12 @@ Contributions are welcome. If you know how to make it more stable, don't hesitat
 ### Run
 Use the default hyperparameters.
 
-# For NAF:
+#### For NAF:
 
 ```python
 python main.py --algo NAF
 ```
-# For DDPG
+#### For DDPG
 
 ```python
 python main.py --algo DDPG
