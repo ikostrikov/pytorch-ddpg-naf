@@ -9,10 +9,10 @@ Use the default hyperparameters.
 #### For NAF:
 
 ```
-python main.py --algo naf
+python main.py --algo NAF
 ```
 #### For DDPG
 
 ```
-python main.py --algo ddpg
+python main.py --algo DDPG
 ```
