@@ -8,11 +8,11 @@ Use the default hyperparameters.
 
 #### For NAF:
 
-```python
+```
 python main.py --algo naf
 ```
 #### For DDPG
 
-```python
+```
 python main.py --algo ddpg
 ```
