@@ -1,13 +1,20 @@
 import sys
 
 import torch
-import torch.autograd as autograd
 import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-import torchvision.transforms as T
+from torch.optim import Adam
 from torch.autograd import Variable
+import torch.nn.functional as F
 
+MSELoss = nn.MSELoss()
+
+def soft_update(target, source, tau):
+    for target_param, param in zip(target.parameters(), source.parameters()):
+        target_param.data.copy_(target_param.data * (1.0 - tau) + param.data * tau)
+
+def hard_update(target, source):
+    for target_param, param in zip(target.parameters(), source.parameters()):
+        target_param.data.copy_(param.data)
 
 class Policy(nn.Module):
 
@@ -43,7 +50,7 @@ class Policy(nn.Module):
         self.L.bias.data.mul_(0.1)
 
         self.tril_mask = Variable(torch.tril(torch.ones(
-            num_outputs, num_outputs), k=-1).unsqueeze(0))
+            num_outputs, num_outputs), diagonal=-1).unsqueeze(0))
         self.diag_mask = Variable(torch.diag(torch.diag(
             torch.ones(num_outputs, num_outputs))).unsqueeze(0))
 
@@ -78,15 +85,16 @@ class NAF:
 
     def __init__(self, gamma, tau, hidden_size, num_inputs, action_space):
         self.action_space = action_space
+        self.num_inputs = num_inputs
+        
         self.model = Policy(hidden_size, num_inputs, action_space)
         self.target_model = Policy(hidden_size, num_inputs, action_space)
-        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3)
+        self.optimizer = Adam(self.model.parameters(), lr=1e-3)
 
         self.gamma = gamma
         self.tau = tau
 
-        for target_param, param in zip(self.target_model.parameters(), self.model.parameters()):
-            target_param.data.copy_(param.data)
+        hard_update(self.target_model, self.model)
 
     def select_action(self, state, exploration=None):
         self.model.eval()
@@ -106,19 +114,17 @@ class NAF:
         mask_batch = Variable(torch.cat(batch.mask))
 
         _, _, next_state_values = self.target_model((next_state_batch, None))
-        next_state_values.volatile = False
-        expected_state_action_values = (
-            next_state_values * self.gamma) + reward_batch
+
+        reward_batch = (torch.unsqueeze(reward_batch, 1))
+        expected_state_action_values = reward_batch + (next_state_values * self.gamma)
+
         _, state_action_values, _ = self.model((state_batch, action_batch))
 
-        loss = (state_action_values - expected_state_action_values).pow(2).mean()
+        loss = MSELoss(state_action_values, expected_state_action_values)
 
         self.optimizer.zero_grad()
         loss.backward()
-        for param in self.model.parameters():
-            param.grad.data.clamp(-1, 1)
+        torch.nn.utils.clip_grad_norm(self.model.parameters(), 1)
         self.optimizer.step()
 
-        for target_param, param in zip(self.target_model.parameters(), self.model.parameters()):
-            target_param.data.copy_(
-                target_param.data * (1.0 - self.tau) + param.data * self.tau)
+        soft_update(self.target_model, self.model, self.tau)
