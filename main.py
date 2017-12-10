@@ -5,15 +5,19 @@ from itertools import count
 
 import gym
 import numpy as np
+import matplotlib.pyplot as plt
 from gym import wrappers
 
 import torch
+from ddpg import DDPG
 from naf import NAF
 from normalized_actions import NormalizedActions
 from ounoise import OUNoise
 from replay_memory import ReplayMemory, Transition
 
 parser = argparse.ArgumentParser(description='PyTorch REINFORCE example')
+parser.add_argument('--algo', default='NAF',
+                    help='algorithm to use: DDPG | NAF')
 parser.add_argument('--gamma', type=float, default=0.99, metavar='G',
                     help='discount factor for reward (default: 0.99)')
 parser.add_argument('--tau', type=float, default=0.001, metavar='G',
@@ -24,10 +28,10 @@ parser.add_argument('--final_noise_scale', type=float, default=0.3, metavar='G',
                     help='final noise scale (default: 0.3)')
 parser.add_argument('--exploration_end', type=int, default=100, metavar='N',
                     help='number of episodes with noise (default: 100)')
-parser.add_argument('--seed', type=int, default=42, metavar='N',
-                    help='random seed (default: 42)')
-parser.add_argument('--batch_size', type=int, default=64, metavar='N',
-                    help='batch size (default: 64)')
+parser.add_argument('--seed', type=int, default=4, metavar='N',
+                    help='random seed (default: 4)')
+parser.add_argument('--batch_size', type=int, default=128, metavar='N',
+                    help='batch size (default: 128)')
 parser.add_argument('--num_steps', type=int, default=1000, metavar='N',
                     help='max episode length (default: 1000)')
 parser.add_argument('--num_episodes', type=int, default=1000, metavar='N',
@@ -50,13 +54,18 @@ env = wrappers.Monitor(env, '/tmp/{}-experiment'.format(env_name), force=True)
 env.seed(args.seed)
 torch.manual_seed(args.seed)
 np.random.seed(args.seed)
+if args.algo == "NAF":
+    agent = NAF(args.gamma, args.tau, args.hidden_size,
+                      env.observation_space.shape[0], env.action_space)
+else:
+    agent = DDPG(args.gamma, args.tau, args.hidden_size,
+                      env.observation_space.shape[0], env.action_space)
 
-agent = NAF(args.gamma, args.tau, args.hidden_size,
-            env.observation_space.shape[0], env.action_space)
 memory = ReplayMemory(args.replay_size)
 ounoise = OUNoise(env.action_space.shape[0])
 
 rewards = []
+r = []
 for i_episode in range(args.num_episodes):
     if i_episode < args.num_episodes // 2:
         state = torch.Tensor([env.reset()])
@@ -89,6 +98,7 @@ for i_episode in range(args.num_episodes):
                     agent.update_parameters(batch)
 
             if done:
+
                 break
         rewards.append(episode_reward)
     else:
@@ -112,5 +122,13 @@ for i_episode in range(args.num_episodes):
         rewards.append(episode_reward)
     print("Episode: {}, noise: {}, reward: {}, average reward: {}".format(i_episode, ounoise.scale,
                                                                           rewards[-1], np.mean(rewards[-100:])))
+    r.append(np.int(rewards[-1]))
+
+plt.plot(np.arange(len(r)), r)
+plt.xlabel('No. of Episodes')
+plt.ylabel('Rewards')
+plt.title('DDPG')
+plt.savefig('DDPG.png')
+plt.show()
 
 env.close()
