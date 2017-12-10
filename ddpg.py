@@ -102,11 +102,11 @@ class DDPG(object):
 
         self.actor = Actor(hidden_size, self.num_inputs, self.action_space)
         self.actor_target = Actor(hidden_size, self.num_inputs, self.action_space)
-        self.actor_optim = Adam(self.actor.parameters(), lr=0.0001)
+        self.actor_optim = Adam(self.actor.parameters(), lr=1e-4)
 
         self.critic = Critic(hidden_size, self.num_inputs, self.action_space)
         self.critic_target = Critic(hidden_size, self.num_inputs, self.action_space)
-        self.critic_optim = Adam(self.critic.parameters(), lr=0.001)
+        self.critic_optim = Adam(self.critic.parameters(), lr=1e-3)
 
         self.gamma = gamma
         self.tau = tau
