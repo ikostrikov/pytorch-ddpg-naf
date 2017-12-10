@@ -8,7 +8,6 @@ import torch.nn.functional as F
 
 MSELoss = nn.MSELoss()
 
-
 def soft_update(target, source, tau):
     for target_param, param in zip(target.parameters(), source.parameters()):
         target_param.data.copy_(target_param.data * (1.0 - tau) + param.data * tau)
@@ -53,6 +52,7 @@ class Actor(nn.Module):
         mu = F.tanh(self.mu(x))
         return mu
 
+    
 class Critic(nn.Module):
 
     def __init__(self, hidden_size, num_inputs, action_space):
