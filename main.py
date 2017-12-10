@@ -65,7 +65,6 @@ memory = ReplayMemory(args.replay_size)
 ounoise = OUNoise(env.action_space.shape[0])
 
 rewards = []
-r = []
 for i_episode in range(args.num_episodes):
     if i_episode < args.num_episodes // 2:
         state = torch.Tensor([env.reset()])
@@ -122,13 +121,5 @@ for i_episode in range(args.num_episodes):
         rewards.append(episode_reward)
     print("Episode: {}, noise: {}, reward: {}, average reward: {}".format(i_episode, ounoise.scale,
                                                                           rewards[-1], np.mean(rewards[-100:])))
-    r.append(np.int(rewards[-1]))
-
-plt.plot(np.arange(len(r)), r)
-plt.xlabel('No. of Episodes')
-plt.ylabel('Rewards')
-plt.title('DDPG')
-plt.savefig('DDPG.png')
-plt.show()
-
+    
 env.close()
