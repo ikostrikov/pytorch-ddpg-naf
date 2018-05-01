@@ -49,7 +49,7 @@ args = parser.parse_args()
 
 env = NormalizedActions(gym.make(args.env_name))
 
-env = wrappers.Monitor(env, '/tmp/{}-experiment'.format(env_name), force=True)
+env = wrappers.Monitor(env, '/tmp/{}-experiment'.format(args.env_name), force=True)
 
 env.seed(args.seed)
 torch.manual_seed(args.seed)
