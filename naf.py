@@ -6,7 +6,8 @@ from torch.optim import Adam
 from torch.autograd import Variable
 import torch.nn.functional as F
 
-MSELoss = nn.MSELoss()
+def MSELoss(input, target):
+    return torch.sum((input - target)**2) / input.data.nelement()
 
 def soft_update(target, source, tau):
     for target_param, param in zip(target.parameters(), source.parameters()):
@@ -98,7 +99,8 @@ class NAF:
 
     def select_action(self, state, exploration=None):
         self.model.eval()
-        mu, _, _ = self.model((Variable(state, volatile=True), None))
+        with torch.no_grad():
+            mu, _, _ = self.model((Variable(state), None))
         self.model.train()
         mu = mu.data
         if exploration is not None:
@@ -108,10 +110,11 @@ class NAF:
 
     def update_parameters(self, batch):
         state_batch = Variable(torch.cat(batch.state))
-        next_state_batch = Variable(torch.cat(batch.next_state), volatile=True)
         action_batch = Variable(torch.cat(batch.action))
         reward_batch = Variable(torch.cat(batch.reward))
         mask_batch = Variable(torch.cat(batch.mask))
+        with torch.no_grad():
+            next_state_batch = Variable(torch.cat(batch.next_state))
 
         _, _, next_state_values = self.target_model((next_state_batch, None))
 
