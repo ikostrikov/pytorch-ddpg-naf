@@ -9,10 +9,10 @@ Use the default hyperparameters.
 #### For NAF:
 
 ```
-python main.py --algo NAF
+python main.py --algo NAF --env-name HalfCheetah-v2
 ```
 #### For DDPG
 
 ```
-python main.py --algo DDPG
+python main.py --algo DDPG --env-name HalfCheetah-v2
 ```
