@@ -6,7 +6,8 @@ from torch.optim import Adam
 from torch.autograd import Variable
 import torch.nn.functional as F
 
-MSELoss = nn.MSELoss()
+def MSELoss(input, target):
+    return torch.sum((input - target)**2) / input.data.nelement()
 
 def soft_update(target, source, tau):
     for target_param, param in zip(target.parameters(), source.parameters()):
@@ -117,7 +118,8 @@ class DDPG(object):
 
     def select_action(self, state, exploration=None):
         self.actor.eval()
-        mu = self.actor((Variable(state, volatile=True)))
+        with torch.no_grad():
+            mu = self.actor((Variable(state)))
         self.actor.train()
         mu = mu.data
         if exploration is not None:
@@ -128,11 +130,12 @@ class DDPG(object):
 
     def update_parameters(self, batch):
         state_batch = Variable(torch.cat(batch.state))
-        next_state_batch = Variable(torch.cat(batch.next_state), volatile=True)
         action_batch = Variable(torch.cat(batch.action))
         reward_batch = Variable(torch.cat(batch.reward))
         mask_batch = Variable(torch.cat(batch.mask))
-
+        with torch.no_grad():
+            next_state_batch = Variable(torch.cat(batch.next_state))
+        
         next_action_batch = self.actor_target(next_state_batch)
         next_state_action_values = self.critic_target(next_state_batch, next_action_batch)
 
