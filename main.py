@@ -17,6 +17,8 @@ from replay_memory import ReplayMemory, Transition
 parser = argparse.ArgumentParser(description='PyTorch REINFORCE example')
 parser.add_argument('--algo', default='NAF',
                     help='algorithm to use: DDPG | NAF')
+parser.add_argument('--env-name', default="HalfCheetah-v2",
+                    help='name of the environment to run')
 parser.add_argument('--gamma', type=float, default=0.99, metavar='G',
                     help='discount factor for reward (default: 0.99)')
 parser.add_argument('--tau', type=float, default=0.001, metavar='G',
@@ -45,8 +47,7 @@ parser.add_argument('--render', action='store_true',
                     help='render the environment')
 args = parser.parse_args()
 
-env_name = 'Pendulum-v0'
-env = NormalizedActions(gym.make(env_name))
+env = NormalizedActions(gym.make(args.env_name))
 
 env = wrappers.Monitor(env, '/tmp/{}-experiment'.format(env_name), force=True)
 
