@@ -97,14 +97,13 @@ class NAF:
 
         hard_update(self.target_model, self.model)
 
-    def select_action(self, state, exploration=None):
+    def select_action(self, state, action_noise=None, param_noise=None):
         self.model.eval()
-        with torch.no_grad():
-            mu, _, _ = self.model((Variable(state), None))
+        mu, _, _ = self.model((Variable(state), None))
         self.model.train()
         mu = mu.data
-        if exploration is not None:
-            mu += torch.Tensor(exploration.noise())
+        if action_noise is not None:
+            mu += torch.Tensor(action_noise.noise())
 
         return mu.clamp(-1, 1)
 
@@ -113,8 +112,7 @@ class NAF:
         action_batch = Variable(torch.cat(batch.action))
         reward_batch = Variable(torch.cat(batch.reward))
         mask_batch = Variable(torch.cat(batch.mask))
-        with torch.no_grad():
-            next_state_batch = Variable(torch.cat(batch.next_state))
+        next_state_batch = Variable(torch.cat(batch.next_state))
 
         _, _, next_state_values = self.target_model((next_state_batch, None))
 
@@ -131,3 +129,16 @@ class NAF:
         self.optimizer.step()
 
         soft_update(self.target_model, self.model, self.tau)
+
+    def save_model(self, env_name, suffix="", model_path=None):
+        if not os.path.exists('models/'):
+            os.makedirs('models/')
+
+        if model_path is None:
+            model_path = "models/naf_{}_{}".format(env_name, suffix) 
+        print('Saving model to {}'.format(actor_path))
+        torch.save(self.model.state_dict(), model_path)
+
+    def load_model(self, model_path):
+        print('Loading model from {}'.format(model_path))
+        self.model.load_state_dict(torch.load(model_path))
