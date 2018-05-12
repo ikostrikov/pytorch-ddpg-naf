@@ -12,6 +12,7 @@ from ddpg import DDPG
 from naf import NAF
 from normalized_actions import NormalizedActions
 from ounoise import OUNoise
+from param_noise import AdaptiveParamNoiseSpec, ddpg_distance_metric
 from replay_memory import ReplayMemory, Transition
 
 parser = argparse.ArgumentParser(description='PyTorch REINFORCE example')
@@ -23,6 +24,8 @@ parser.add_argument('--gamma', type=float, default=0.99, metavar='G',
                     help='discount factor for reward (default: 0.99)')
 parser.add_argument('--tau', type=float, default=0.001, metavar='G',
                     help='discount factor for model (default: 0.001)')
+parser.add_argument('--ou_noise', type=bool, default=True)
+parser.add_argument('--param_noise', type=bool, default=False)
 parser.add_argument('--noise_scale', type=float, default=0.3, metavar='G',
                     help='initial noise scale (default: 0.3)')
 parser.add_argument('--final_noise_scale', type=float, default=0.3, metavar='G',
@@ -43,13 +46,14 @@ parser.add_argument('--updates_per_step', type=int, default=5, metavar='N',
                     help='model updates per simulator step (default: 5)')
 parser.add_argument('--replay_size', type=int, default=1000000, metavar='N',
                     help='size of replay buffer (default: 1000000)')
-parser.add_argument('--render', action='store_true',
+parser.add_argument('--render', action='store_true', default=False,
                     help='render the environment')
 args = parser.parse_args()
 
 env = NormalizedActions(gym.make(args.env_name))
 
-env = wrappers.Monitor(env, '/tmp/{}-experiment'.format(args.env_name), force=True)
+if args.render:
+    env = wrappers.Monitor(env, '/tmp/{}-experiment'.format(args.env_name), force=True)
 
 env.seed(args.seed)
 torch.manual_seed(args.seed)
@@ -62,18 +66,27 @@ else:
                       env.observation_space.shape[0], env.action_space)
 
 memory = ReplayMemory(args.replay_size)
-ounoise = OUNoise(env.action_space.shape[0])
+
+ounoise = OUNoise(env.action_space.shape[0]) if args.ou_noise else None
+param_noise = AdaptiveParamNoiseSpec(initial_stddev=0.05, 
+    desired_action_stddev=args.noise_scale, adaptation_coefficient=1.05) if args.param_noise else None
 
 rewards = []
 for i_episode in range(args.num_episodes):
     if i_episode < args.num_episodes // 2:
         state = torch.Tensor([env.reset()])
-        ounoise.scale = (args.noise_scale - args.final_noise_scale) * max(0, args.exploration_end -
+
+        if args.ou_noise: 
+            ounoise.scale = (args.noise_scale - args.final_noise_scale) * max(0, args.exploration_end -
                                                                           i_episode) / args.exploration_end + args.final_noise_scale
-        ounoise.reset()
+            ounoise.reset()
+
+        if args.param_noise and args.algo == "DDPG":
+            agent.perturb_actor_parameters(param_noise)
+
         episode_reward = 0
         for t in range(args.num_steps):
-            action = agent.select_action(state, ounoise)
+            action = agent.select_action(state, ounoise, param_noise)
             next_state, reward, done, _ = env.step(action.numpy()[0])
             episode_reward += reward
 
@@ -82,7 +95,7 @@ for i_episode in range(args.num_episodes):
             next_state = torch.Tensor([next_state])
             reward = torch.Tensor([reward])
 
-            if i_episode % 10 == 0:
+            if i_episode % 10 == 0 and args.render:
                 env.render()
 
             memory.push(state, action, mask, next_state, reward)
@@ -97,8 +110,18 @@ for i_episode in range(args.num_episodes):
                     agent.update_parameters(batch)
 
             if done:
-
                 break
+
+        # Update param_noise based on distance metric
+        if args.param_noise:
+            episode_transitions = memory.memory[memory.position-t:memory.position]
+            states = torch.cat([transition[0] for transition in episode_transitions], 0)
+            unperturbed_actions = agent.select_action(states, None, None)
+            perturbed_actions = torch.cat([transition[1] for transition in episode_transitions], 0)
+
+            ddpg_dist = ddpg_distance_metric(perturbed_actions.numpy(), unperturbed_actions.numpy())
+            param_noise.adapt(ddpg_dist)
+
         rewards.append(episode_reward)
     else:
         state = torch.Tensor([env.reset()])
@@ -111,7 +134,7 @@ for i_episode in range(args.num_episodes):
 
             next_state = torch.Tensor([next_state])
 
-            if i_episode % 10 == 0:
+            if i_episode % 10 == 0 and args.render:
                 env.render()
 
             state = next_state
@@ -119,7 +142,6 @@ for i_episode in range(args.num_episodes):
                 break
 
         rewards.append(episode_reward)
-    print("Episode: {}, noise: {}, reward: {}, average reward: {}".format(i_episode, ounoise.scale,
-                                                                          rewards[-1], np.mean(rewards[-100:])))
+    print("Episode: {}, reward: {}, average reward: {}".format(i_episode, rewards[-1], np.mean(rewards[-10:])))
     
 env.close()
