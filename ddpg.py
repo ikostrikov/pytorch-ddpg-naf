@@ -6,9 +6,6 @@ from torch.optim import Adam
 from torch.autograd import Variable
 import torch.nn.functional as F
 
-def MSELoss(input, target):
-    return torch.sum((input - target)**2) / input.data.nelement()
-
 def soft_update(target, source, tau):
     for target_param, param in zip(target.parameters(), source.parameters()):
         target_param.data.copy_(target_param.data * (1.0 - tau) + param.data * tau)
@@ -159,7 +156,7 @@ class DDPG(object):
 
         state_action_batch = self.critic((state_batch), (action_batch))
 
-        value_loss = MSELoss(state_action_batch, expected_state_action_batch)
+        value_loss = F.mse_loss(state_action_batch, expected_state_action_batch)
         value_loss.backward()
         self.critic_optim.step()
 
@@ -173,6 +170,8 @@ class DDPG(object):
 
         soft_update(self.actor_target, self.actor, self.tau)
         soft_update(self.critic_target, self.critic, self.tau)
+
+        return value_loss.item(), policy_loss.item()
 
     def perturb_actor_parameters(self, param_noise):
         """Apply parameter noise to actor model, for exploration"""

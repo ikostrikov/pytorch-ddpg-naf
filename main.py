@@ -2,6 +2,8 @@ import argparse
 import math
 from collections import namedtuple
 from itertools import count
+from tqdm import tqdm
+from tensorboardX import SummaryWriter
 
 import gym
 import numpy as np
@@ -52,6 +54,8 @@ args = parser.parse_args()
 
 env = NormalizedActions(gym.make(args.env_name))
 
+writer = SummaryWriter()
+
 if args.render:
     env = wrappers.Monitor(env, '/tmp/{}-experiment'.format(args.env_name), force=True)
 
@@ -72,6 +76,9 @@ param_noise = AdaptiveParamNoiseSpec(initial_stddev=0.05,
     desired_action_stddev=args.noise_scale, adaptation_coefficient=1.05) if args.param_noise else None
 
 rewards = []
+total_numsteps = 0
+updates = 0
+
 for i_episode in range(args.num_episodes):
     if i_episode < args.num_episodes // 2:
         state = torch.Tensor([env.reset()])
@@ -85,9 +92,10 @@ for i_episode in range(args.num_episodes):
             agent.perturb_actor_parameters(param_noise)
 
         episode_reward = 0
-        for t in range(args.num_steps):
+        for t in tqdm(range(args.num_steps)):
             action = agent.select_action(state, ounoise, param_noise)
             next_state, reward, done, _ = env.step(action.numpy()[0])
+            total_numsteps += 1
             episode_reward += reward
 
             action = torch.Tensor(action)
@@ -107,10 +115,16 @@ for i_episode in range(args.num_episodes):
                     transitions = memory.sample(args.batch_size)
                     batch = Transition(*zip(*transitions))
 
-                    agent.update_parameters(batch)
+                    value_loss, policy_loss = agent.update_parameters(batch)
 
+                    writer.add_scalar('loss/value', value_loss, updates)
+                    writer.add_scalar('loss/policy', policy_loss, updates)
+
+                    updates += 1
             if done:
                 break
+
+        writer.add_scalar('reward', episode_reward, i_episode)
 
         # Update param_noise based on distance metric
         if args.param_noise:
@@ -142,6 +156,6 @@ for i_episode in range(args.num_episodes):
                 break
 
         rewards.append(episode_reward)
-    print("Episode: {}, reward: {}, average reward: {}".format(i_episode, rewards[-1], np.mean(rewards[-10:])))
+    print("Episode: {}, total numsteps: {}, reward: {}, average reward: {}".format(i_episode, total_numsteps, rewards[-1], np.mean(rewards[-10:])))
     
 env.close()
