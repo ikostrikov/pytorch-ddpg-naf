@@ -48,16 +48,11 @@ parser.add_argument('--updates_per_step', type=int, default=5, metavar='N',
                     help='model updates per simulator step (default: 5)')
 parser.add_argument('--replay_size', type=int, default=1000000, metavar='N',
                     help='size of replay buffer (default: 1000000)')
-parser.add_argument('--render', action='store_true', default=False,
-                    help='render the environment')
 args = parser.parse_args()
 
 env = NormalizedActions(gym.make(args.env_name))
 
 writer = SummaryWriter()
-
-if args.render:
-    env = wrappers.Monitor(env, '/tmp/{}-experiment'.format(args.env_name), force=True)
 
 env.seed(args.seed)
 torch.manual_seed(args.seed)
@@ -80,67 +75,63 @@ total_numsteps = 0
 updates = 0
 
 for i_episode in range(args.num_episodes):
-    if i_episode < args.num_episodes // 2:
-        state = torch.Tensor([env.reset()])
+    state = torch.Tensor([env.reset()])
 
-        if args.ou_noise: 
-            ounoise.scale = (args.noise_scale - args.final_noise_scale) * max(0, args.exploration_end -
-                                                                          i_episode) / args.exploration_end + args.final_noise_scale
-            ounoise.reset()
+    if args.ou_noise: 
+        ounoise.scale = (args.noise_scale - args.final_noise_scale) * max(0, args.exploration_end -
+                                                                      i_episode) / args.exploration_end + args.final_noise_scale
+        ounoise.reset()
 
-        if args.param_noise and args.algo == "DDPG":
-            agent.perturb_actor_parameters(param_noise)
+    if args.param_noise and args.algo == "DDPG":
+        agent.perturb_actor_parameters(param_noise)
 
-        episode_reward = 0
-        for t in tqdm(range(args.num_steps)):
-            action = agent.select_action(state, ounoise, param_noise)
-            next_state, reward, done, _ = env.step(action.numpy()[0])
-            total_numsteps += 1
-            episode_reward += reward
+    episode_reward = 0
+    while True:
+        action = agent.select_action(state, ounoise, param_noise)
+        next_state, reward, done, _ = env.step(action.numpy()[0])
+        total_numsteps += 1
+        episode_reward += reward
 
-            action = torch.Tensor(action)
-            mask = torch.Tensor([not done])
-            next_state = torch.Tensor([next_state])
-            reward = torch.Tensor([reward])
+        action = torch.Tensor(action)
+        mask = torch.Tensor([not done])
+        next_state = torch.Tensor([next_state])
+        reward = torch.Tensor([reward])
 
-            if i_episode % 10 == 0 and args.render:
-                env.render()
+        memory.push(state, action, mask, next_state, reward)
 
-            memory.push(state, action, mask, next_state, reward)
+        state = next_state
 
-            state = next_state
+        if len(memory) > args.batch_size:
+            for _ in range(args.updates_per_step):
+                transitions = memory.sample(args.batch_size)
+                batch = Transition(*zip(*transitions))
 
-            if len(memory) > args.batch_size * 5:
-                for _ in range(args.updates_per_step):
-                    transitions = memory.sample(args.batch_size)
-                    batch = Transition(*zip(*transitions))
+                value_loss, policy_loss = agent.update_parameters(batch)
 
-                    value_loss, policy_loss = agent.update_parameters(batch)
+                writer.add_scalar('loss/value', value_loss, updates)
+                writer.add_scalar('loss/policy', policy_loss, updates)
 
-                    writer.add_scalar('loss/value', value_loss, updates)
-                    writer.add_scalar('loss/policy', policy_loss, updates)
+                updates += 1
+        if done:
+            break
 
-                    updates += 1
-            if done:
-                break
+    writer.add_scalar('reward/train', episode_reward, i_episode)
 
-        writer.add_scalar('reward', episode_reward, i_episode)
+    # Update param_noise based on distance metric
+    if args.param_noise:
+        episode_transitions = memory.memory[memory.position-t:memory.position]
+        states = torch.cat([transition[0] for transition in episode_transitions], 0)
+        unperturbed_actions = agent.select_action(states, None, None)
+        perturbed_actions = torch.cat([transition[1] for transition in episode_transitions], 0)
 
-        # Update param_noise based on distance metric
-        if args.param_noise:
-            episode_transitions = memory.memory[memory.position-t:memory.position]
-            states = torch.cat([transition[0] for transition in episode_transitions], 0)
-            unperturbed_actions = agent.select_action(states, None, None)
-            perturbed_actions = torch.cat([transition[1] for transition in episode_transitions], 0)
+        ddpg_dist = ddpg_distance_metric(perturbed_actions.numpy(), unperturbed_actions.numpy())
+        param_noise.adapt(ddpg_dist)
 
-            ddpg_dist = ddpg_distance_metric(perturbed_actions.numpy(), unperturbed_actions.numpy())
-            param_noise.adapt(ddpg_dist)
-
-        rewards.append(episode_reward)
-    else:
+    rewards.append(episode_reward)
+    if i_episode % 10 == 0:
         state = torch.Tensor([env.reset()])
         episode_reward = 0
-        for t in range(args.num_steps):
+        while True:
             action = agent.select_action(state)
 
             next_state, reward, done, _ = env.step(action.numpy()[0])
@@ -148,14 +139,13 @@ for i_episode in range(args.num_episodes):
 
             next_state = torch.Tensor([next_state])
 
-            if i_episode % 10 == 0 and args.render:
-                env.render()
-
             state = next_state
             if done:
                 break
 
+        writer.add_scalar('reward/test', episode_reward, i_episode)
+
         rewards.append(episode_reward)
-    print("Episode: {}, total numsteps: {}, reward: {}, average reward: {}".format(i_episode, total_numsteps, rewards[-1], np.mean(rewards[-10:])))
+        print("Episode: {}, total numsteps: {}, reward: {}, average reward: {}".format(i_episode, total_numsteps, rewards[-1], np.mean(rewards[-10:])))
     
 env.close()
