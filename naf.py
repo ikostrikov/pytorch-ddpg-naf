@@ -116,8 +116,9 @@ class NAF:
 
         _, _, next_state_values = self.target_model((next_state_batch, None))
 
-        reward_batch = (torch.unsqueeze(reward_batch, 1))
-        expected_state_action_values = reward_batch + (next_state_values * self.gamma)
+        reward_batch = reward_batch.unsqueeze(1)
+        mask_batch = mask_batch.unsqueeze(1)
+        expected_state_action_values = reward_batch + (self.gamma * mask_batch + next_state_values)
 
         _, state_action_values, _ = self.model((state_batch, action_batch))
 

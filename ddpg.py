@@ -149,8 +149,9 @@ class DDPG(object):
         next_action_batch = self.actor_target(next_state_batch)
         next_state_action_values = self.critic_target(next_state_batch, next_action_batch)
 
-        reward_batch = torch.unsqueeze(reward_batch, 1)
-        expected_state_action_batch = reward_batch + (self.gamma * next_state_action_values)
+        reward_batch = reward_batch.unsqueeze(1)
+        mask_batch = mask_batch.unsqueeze(1)
+        expected_state_action_batch = reward_batch + (self.gamma * mask_batch * next_state_action_values)
 
         self.critic_optim.zero_grad()
 
