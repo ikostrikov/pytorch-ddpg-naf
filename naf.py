@@ -139,7 +139,7 @@ class NAF:
 
         if model_path is None:
             model_path = "models/naf_{}_{}".format(env_name, suffix) 
-        print('Saving model to {}'.format(actor_path))
+        print('Saving model to {}'.format(model_path))
         torch.save(self.model.state_dict(), model_path)
 
     def load_model(self, model_path):
